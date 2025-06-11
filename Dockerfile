@@ -1,22 +1,22 @@
-# Base com Python e apt
+# Imagem base com Python
 FROM python:3.10-slim
 
-# Instalar ffmpeg e dependências
+# Instala FFmpeg e dependências básicas
 RUN apt-get update && \
     apt-get install -y ffmpeg && \
     apt-get clean
 
-# Diretório da aplicação
+# Define diretório de trabalho
 WORKDIR /app
 
-# Copiar arquivos
+# Copia arquivos do projeto
 COPY . .
 
-# Instalar dependências Python
+# Instala dependências Python
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Porta para Render expor
+# Expõe a porta da aplicação
 EXPOSE 10000
 
-# Iniciar app
+# Comando para iniciar o servidor
 CMD ["python", "server.py"]
