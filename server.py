@@ -6,7 +6,7 @@ app = Flask(__name__)
 UPLOAD_FOLDER = 'uploads'
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
-# Chave e URL do Facebook Live
+# Dados da transmissão
 STREAM_URL = 'rtmps://live-api-s.facebook.com:443/rtmp/'
 STREAM_KEY = 'FB-745433421335513-0-Ab2151bh5oex3yr_ADWG_rRV'
 
@@ -18,13 +18,13 @@ def index():
 def upload():
     video = request.files['video']
     if video:
-        path = os.path.join(UPLOAD_FOLDER, video.filename)
-        video.save(path)
+        filepath = os.path.join(UPLOAD_FOLDER, video.filename)
+        video.save(filepath)
 
         cmd = [
             'ffmpeg',
             '-re',
-            '-i', path,
+            '-i', filepath,
             '-c:v', 'libx264',
             '-preset', 'veryfast',
             '-maxrate', '3000k',
@@ -36,10 +36,18 @@ def upload():
             '-f', 'flv',
             STREAM_URL + STREAM_KEY
         ]
-        subprocess.Popen(cmd)
 
-        return "Live iniciada com sucesso!"
-    return "Erro ao enviar vídeo."
+        try:
+            subprocess.run(cmd, check=True)
+            return "Live finalizada com sucesso!"
+        except subprocess.CalledProcessError:
+            return "Erro ao transmitir o vídeo."
+        finally:
+            if os.path.exists(filepath):
+                os.remove(filepath)
+                print(f"Arquivo removido: {filepath}")
+
+    return "Erro: Nenhum vídeo foi enviado."
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=10000)
