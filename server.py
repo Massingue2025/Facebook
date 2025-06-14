@@ -1,53 +1,64 @@
-from flask import Flask, render_template, request
-import os
-import subprocess
+const express = require('express');
+const multer = require('multer');
+const { spawn } = require('child_process');
+const path = require('path');
+const fs = require('fs');
 
-app = Flask(__name__)
-UPLOAD_FOLDER = 'uploads'
-os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+const app = express();
+const PORT = process.env.PORT || 3000;
 
-# Dados da transmissão
-STREAM_URL = 'rtmps://live-api-s.facebook.com:443/rtmp/'
-STREAM_KEY = 'FB-745433421335513-0-Ab2151bh5oex3yr_ADWG_rRV'
+// Middleware de upload com multer
+const upload = multer({ dest: 'uploads/' });
 
-@app.route('/')
-def index():
-    return render_template('index.html')
+// 🟢 Rota de "ping" para manter o servidor ativo
+app.get('/ping', (req, res) => {
+  res.status(200).send('Servidor ativo ✅');
+});
 
-@app.route('/upload', methods=['POST'])
-def upload():
-    video = request.files['video']
-    if video:
-        filepath = os.path.join(UPLOAD_FOLDER, video.filename)
-        video.save(filepath)
+// 🎬 Rota principal para receber o vídeo e iniciar live
+app.post('/render-server', upload.single('video'), (req, res) => {
+  const videoPath = req.file?.path;
+  const streamUrl = req.body?.streamUrl;
 
-        cmd = [
-            'ffmpeg',
-            '-re',
-            '-i', filepath,
-            '-c:v', 'libx264',
-            '-preset', 'veryfast',
-            '-maxrate', '3000k',
-            '-bufsize', '6000k',
-            '-pix_fmt', 'yuv420p',
-            '-g', '50',
-            '-c:a', 'aac',
-            '-b:a', '128k',
-            '-f', 'flv',
-            STREAM_URL + STREAM_KEY
-        ]
+  if (!videoPath || !streamUrl) {
+    return res.status(400).json({ success: false, error: 'Faltando vídeo ou URL de stream.' });
+  }
 
-        try:
-            subprocess.run(cmd, check=True)
-            return "Live finalizada com sucesso!"
-        except subprocess.CalledProcessError:
-            return "Erro ao transmitir o vídeo."
-        finally:
-            if os.path.exists(filepath):
-                os.remove(filepath)
-                print(f"Arquivo removido: {filepath}")
+  console.log(`🎥 Iniciando transmissão para: ${streamUrl}`);
 
-    return "Erro: Nenhum vídeo foi enviado."
+  const ffmpeg = spawn('ffmpeg', [
+    '-re',
+    '-i', videoPath,
+    '-c:v', 'libx264',
+    '-preset', 'veryfast',
+    '-maxrate', '3000k',
+    '-bufsize', '6000k',
+    '-pix_fmt', 'yuv420p',
+    '-g', '50',
+    '-c:a', 'aac',
+    '-b:a', '128k',
+    '-ar', '44100',
+    '-f', 'flv',
+    streamUrl
+  ]);
 
-if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=10000)
+  ffmpeg.stderr.on('data', data => {
+    console.log(`[FFmpeg] ${data}`);
+  });
+
+  ffmpeg.on('close', code => {
+    console.log(`🛑 Transmissão encerrada com código ${code}`);
+    // Remove vídeo temporário
+    fs.unlink(videoPath, err => {
+      if (err) console.error('Erro ao remover vídeo:', err);
+      else console.log('🗑️ Vídeo temporário removido');
+    });
+  });
+
+  res.json({ success: true, message: 'Transmissão iniciada!' });
+});
+
+// Iniciar servidor
+app.listen(PORT, () => {
+  console.log(`🚀 Servidor Node.js rodando em http://localhost:${PORT}`);
+});
